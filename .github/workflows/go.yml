@@ -1,13 +1,6 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
 name: Go
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+on: [push , pull_request]
 
 jobs:
 
@@ -26,3 +19,39 @@ jobs:
 
     - name: Test
       run: go test -v ./...
+      
+    - name: upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: my-artifact
+        path: ${{ github.workspace }}/
+  release:
+    name: release artifacts
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - name: Downland artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: my-artifact
+    - name: test download    
+      run: ls -R
+    - name: test download 2   
+      run: pwd 
+  packer:
+    runs-on: ubuntu-latest
+    needs: release
+    name: packer
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+
+      # validate templates
+      - name: Validate Template
+        uses: hashicorp/packer-github-actions@master
+        with:
+          command: validate
+          arguments: -syntax-only
+          target: ami.pkr.hcl
