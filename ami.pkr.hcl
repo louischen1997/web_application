@@ -77,10 +77,10 @@ build {
       //"sudo apt update",
       "sudo apt-get -y install golang-go",
       "sudo apt-get -y install mysql-server",
-      "sudo mysql -u root -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY 'chenYTCfor6225';\"",
-      "sudo mysql --user=root --password=chenYTCfor6225 -e \"create database Goapi;\"",
-      "sudo mysql --user=root --password=chenYTCfor6225 -e \"CREATE USER 'newur'@'localhost' IDENTIFIED BY 'ytc6225forclass';\"",
-      "sudo mysql --user=root --password=chenYTCfor6225 -e \"GRANT ALL PRIVILEGES ON *.* TO 'newur'@'localhost';\"",
+      "sudo mysql -u root -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY 'SECRET_PASS';\"",
+      "sudo mysql --user=root --password=SECRET_PASS -e \"create database Goapi;\"",
+      "sudo mysql --user=root --password=cSECRET_PASS -e \"CREATE USER 'newur'@'localhost' IDENTIFIED BY 'SECRET_PASS';\"",
+      "sudo mysql --user=root --password=SECRET_PASS -e \"GRANT ALL PRIVILEGES ON *.* TO 'newur'@'localhost';\"",
       
       
       // "systemctl is-active mysql",
