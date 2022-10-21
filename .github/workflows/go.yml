@@ -55,3 +55,14 @@ jobs:
           command: validate
           arguments: -syntax-only
           target: ami.pkr.hcl
+      - name: Build Artifact
+        uses: hashicorp/packer-github-actions@master
+        with:
+          command: build
+          arguments: "-color=false -on-error=abort"
+          target: ami.pkr.hcl
+          working_directory: ./
+        env:
+          PACKER_LOG: 1
+          AWS_ACCESS_KEY: ${{ secrets.creID }}
+          AWS_SECRET_KEY: ${{ secrets.creSecret }}      
