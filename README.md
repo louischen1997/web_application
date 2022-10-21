@@ -35,13 +35,13 @@
 2. set branch protection on this action workflow
  
 + ## Create group and users
-1. create group csye6225-ta for TA
-2. create DEVGroup for me
+1. create group csye6225-ta 
+2. create DEVGroup 
 3. add ReadOnly policy,Administrator policy 
 
 + ## Configure
 1. aws configure
-   - configure 3 users(me)
+   - configure 3 users
    - dev, demo , root for profile names
    - export AWS_PROFILE=demo
 
@@ -49,7 +49,7 @@
 
 1. create repo infrastructure
 2. fork to local
-3. add README.md
+
 
 + ## AWS CLI Networking setup
 1. export AWS_PROFILE=dev
