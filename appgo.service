@@ -1,0 +1,28 @@
+[Unit]
+Description=MyApp Go Service
+ConditionPathExists=/home/ubuntu
+After=network.target
+[Service]
+Type=simple
+User=burn
+Group=burn
+WorkingDirectory=/home/ubuntu
+ExecStart=/bin/go run .
+Restart=on-failure
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=appgoservice
+[Install]
+WantedBy=multi-user.target
+
+
+
+[Unit]
+Description=MyApp Go Service
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu
+ExecStart=/usr/lib/go-1.18/bin/go run .
+[Install]
+WantedBy=multi-user.target
