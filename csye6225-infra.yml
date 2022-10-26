@@ -28,8 +28,24 @@ Parameters:
   Subnet3ZN:
     Description: "subnet3 zone"
     Type: String
-    Default: "us-west-2c"       
+    Default: "us-west-2c"  
+  ImageIdd:
+    Description: "img id"
+    Type: String 
+    Default: "ami-0f425899fb7879df0"  
+  Keynamestr:
+    Description: "using key"      
+    Type: String
+    Default: "aws-us-west-2"
 Resources:
+  MyBucket:
+    Type: "AWS::S3::Bucket"
+    Properties: 
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+          
   myVPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -47,6 +63,7 @@ Resources:
         Ref: myVPC
       CidrBlock: !Ref Subnet1Cidr
       AvailabilityZone: !Ref Subnet1ZN
+      MapPublicIpOnLaunch: 'true'
       Tags:
       - Key: Name
         Value: !Ref AWS::StackName
@@ -123,7 +140,171 @@ Resources:
          Ref: myRouteTable
        DestinationCidrBlock: 0.0.0.0/0
        GatewayId:
-         Ref: myInternetGateway                         
+         Ref: myInternetGateway
+  privateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: 10.0.160.0/20
+      AvailabilityZone: "us-west-2a"
+      Tags:
+      - Key: Name
+        Value: "private subnet1"
+  privateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: 10.0.128.0/20
+      AvailabilityZone: "us-west-2b"
+      Tags:
+      - Key: Name
+        Value: "private subnet2"
+  privateSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: 10.0.144.0/20
+      AvailabilityZone: "us-west-2c"
+      Tags:
+      - Key: Name
+        Value: "private subnet3"   
+  myPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:  
+        Ref: myVPC
+      Tags:
+      - Key: Name
+        Value: "private route table"
+
+  myPrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: privateSubnet1
+      RouteTableId:
+        Ref: myPrivateRouteTable
+  myPrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: privateSubnet2
+      RouteTableId:
+        Ref: myPrivateRouteTable
+  myPrivateSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: privateSubnet3
+      RouteTableId:
+        Ref: myPrivateRouteTable                                                
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId: 
+        Ref: myVPC
+      Tags:
+      - Key: Name
+        Value: "application"  
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0   
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+  privateInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId: 
+        Ref: myVPC
+      Tags:
+        - Key: Name
+          Value: "database"  
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0                            
+  MyEC2Instance: 
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: !Ref ImageIdd
+      KeyName: !Ref Keynamestr
+      InstanceType: "t2.micro"
+      DisableApiTermination: 'false'
+      UserData: 
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            apt-get -y install mysql-server
+      SubnetId : 
+        Ref: mySubnet1
+      SecurityGroupIds: 
+        - !Ref MySecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: "50"
+            VolumeType: "gp2"
+            DeleteOnTermination: 'true'
+  myPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: myPrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: !Ref MyEC2Instance
+  RDSDBParameterGroup:
+    Type: 'AWS::RDS::DBParameterGroup'
+    Properties:
+      Description: CloudFormation Sample MySQL Parameter Group
+      Family: mysql5.7
+  myDBSubnetGroup: 
+    Properties: 
+      DBSubnetGroupDescription: description
+      SubnetIds: 
+        - !Ref privateSubnet1
+        - !Ref privateSubnet2
+        - !Ref privateSubnet3        
+    Type: "AWS::RDS::DBSubnetGroup"    
+  RDSDBInstance:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      AllocatedStorage: "50"
+      DBInstanceClass: db.t3.micro
+      MultiAZ : "false"
+      DBInstanceIdentifier: 'csye6225'
+      MasterUsername: 'csye6225'
+      MasterUserPassword: 'LYtc$199796!_KkC25'
+      Engine: 'mysql'
+      DBSubnetGroupName:
+        Ref: myDBSubnetGroup
+      PubliclyAccessible: 'false' 
+      DBName: "csye6225" 
+      VPCSecurityGroups:
+        - !Ref privateInstanceSecurityGroup
+    
+  
+      
+                     
+       
+
 Outputs:
     VpcId:
       Description: The VPC ID
