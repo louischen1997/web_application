@@ -1,6 +1,6 @@
 package mdl
 
-type Dbtable struct {
+type User struct {
 	First_name      string `gorm:"type:varchar(45)"`
 	Last_name       string `gorm:"type:varchar(45)"`
 	Password        string `gorm:"type:varchar(225)"`
@@ -10,4 +10,4 @@ type Dbtable struct {
 	Account_updated string `gorm:"type:varchar(100)"`
 }
 
-type Dbtables []Dbtable
+type Users []User
