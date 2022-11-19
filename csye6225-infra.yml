@@ -65,12 +65,35 @@ Parameters:
   awsCloudWatchServerAgent:
     Type: String
     Default: arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+  dynamodbpolicy:
+    Type: String
+    Default: arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess  
   setrecordDomainID:
     Type: String
     Default: Z007227514AEIDXKO3F49
   setrecordDomainName:
     Type: String
     Default: prod.louisdomain6225.me
+  sendgridkey:
+    Type: String
+    Default: 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 
+  dynamodbtable:
+    Type: String
+    Default: dynamodbtable    
+  lambdaPolicycloudwatch:
+    Type: String
+    Default: arn:aws:iam::aws:policy/CloudWatchFullAccess
+  lambdaPolicySNS:
+    Type: String
+    Default: arn:aws:iam::aws:policy/AmazonSNSFullAccess
+  lambdaPolicylambda:
+    Type: String
+    Default: arn:aws:iam::aws:policy/AWSLambda_FullAccess
+  lambdabucket:
+    Type: String
+    Default: testbuck-csye-kaiwenchen
+
+
 
 Resources:
 
@@ -353,9 +376,31 @@ Resources:
       RoleName: "EC2-CSYE6225"
       ManagedPolicyArns:
         - !Ref awsCloudWatchServerAgent
+        - !Ref dynamodbpolicy
+        - !Ref lambdaPolicySNS
       Tags:
         - Key: Name
           Value: "EC2-CSYE6225"
+  mylambdaRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      RoleName: "lambda_role"
+      ManagedPolicyArns:
+        - !Ref lambdaPolicycloudwatch
+        - !Ref lambdaPolicylambda
+        - !Ref lambdaPolicySNS
+      Tags:
+        - Key: Name
+          Value: "Lambda_Role"          
   myPolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -402,6 +447,9 @@ Resources:
             echo bkn=${MyBucket} >> .env
             echo AWS_REGION=${DBRegion} >> .env
             echo endpoint=${setrecordDomainName} >> .env
+            echo sendgrid=${sendgridkey} >> .env
+            echo dynamotablename=${dynamodbtable} >> .env
+            echo snstopic=${MySNSTopic} >> .env
             sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
             -a fetch-config \
             -m ec2 \
@@ -436,7 +484,65 @@ Resources:
       TTL: '900'
       ResourceRecords:
       - !GetAtt MyEC2Instance.PublicIp         
+  DynamoDB:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref dynamodbtable
+      BillingMode: PROVISIONED
+      AttributeDefinitions:
+        - AttributeName: EMAIL_KEY
+          AttributeType: S
+        - AttributeName: TOKEN
+          AttributeType: S
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: TTLATT
+      KeySchema:
+        - AttributeName: EMAIL_KEY
+          KeyType: HASH
+        - AttributeName: TOKEN
+          KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
 
+
+
+  
+  lambdago:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: go1.x
+      Role: !GetAtt mylambdaRole.Arn
+      Handler: main
+      Code:
+        S3Bucket: !Ref lambdabucket
+        S3Key: main.zip
+      Description: Invoke a function 
+      TracingConfig:
+        Mode: Active        
+
+  MySNSTopic: 
+    Type: AWS::SNS::Topic
+    Properties: 
+      Subscription:  
+      - 
+        Endpoint: !GetAtt lambdago.Arn
+        Protocol: lambda
+
+  LambdaInvokePermission: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn:  !Ref MySNSTopic 
+      FunctionName: !GetAtt lambdago.Arn
+
+      
+                   
+
+  
+ 
   
   
     
