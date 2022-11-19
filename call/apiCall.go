@@ -2,16 +2,31 @@ package call
 
 import (
 	"Golangapi/pojo"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+
+	"strconv"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
+	"github.com/aws/aws-sdk-go/service/sns"
 	"github.com/cactus/go-statsd-client/v5/statsd"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
+
+type Item struct {
+	EMAIL_KEY string                   `json:"EMAIL_KEY"`
+	TOKEN     string                   `json:"TOKEN"`
+	TTLATT    dynamodbattribute.Number `json:"TTLATT"`
+}
 
 var hasAuth bool = false
 var tmpuserID string = ""
@@ -63,7 +78,13 @@ func GetUsers(c *gin.Context) {
 	HandleMetricCounter("Get_Users")
 
 	if !hasAuth {
+		c.Status(401)
 		Logger.Print("Get Request, Authenticate Fail, Endpoint: " + ep + ":3000/v1/account/" + user.ID)
+		return
+	}
+	if user.VerifyType == "0" {
+		c.Status(401)
+		Logger.Print("Get Request, Authenticate Fail->unverified, Endpoint: " + ep + ":3000/v1/account/" + user.ID)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -73,6 +94,7 @@ func GetUsers(c *gin.Context) {
 		"id":              user.ID,
 		"account_created": user.Account_created,
 		"account_updated": user.Account_updated,
+		"verify_status":   "verified",
 	})
 	Logger.Print("Get Request, Get User ID: " + user.ID + ", Endpoint: " + ep + ":3000/v1/account/" + user.ID)
 	hasAuth = false
@@ -112,6 +134,7 @@ func PostUsers(c *gin.Context) {
 	user.ID = id
 	user.Account_created = now
 	user.Account_updated = now
+	user.VerifyType = "0"
 
 	pojo.PostUsers_db(user)
 	c.JSON(201, gin.H{
@@ -121,8 +144,62 @@ func PostUsers(c *gin.Context) {
 		"id":              user.ID,
 		"account_created": user.Account_created,
 		"account_updated": user.Account_updated,
+		"verify_status":   "unverified",
 	})
 	Logger.Print("Post Request, Post New User: " + user.First_name + " " + user.Last_name + ", Endpoint: " + ep + ":3000/v1/account")
+
+	oneTimeToken := uuid.New().String()
+
+	// Initialize a session that the SDK will use to load
+	// credentials from the shared credentials file. (~/.aws/credentials).
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+
+	svc := sns.New(sess)
+	sendgridkey := os.Getenv("sendgrid")
+	//sendgridkey := "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"
+
+	mess := user.Username + "/" + oneTimeToken + "/" + sendgridkey + "/" + ep
+
+	topicarn := os.Getenv("snstopic")
+	result, errr := svc.Publish(&sns.PublishInput{
+		Message:  &mess,
+		TopicArn: &topicarn,
+	})
+
+	if errr != nil {
+		fmt.Println(errr.Error())
+		os.Exit(1)
+	}
+
+	fmt.Println(*result.MessageId)
+
+	//sendemails()
+
+	item := Item{
+		EMAIL_KEY: user.Username,
+		TOKEN:     oneTimeToken,
+		TTLATT:    dynamodbattribute.Number(strconv.FormatInt(time.Now().Unix(), 10)),
+	}
+	svc2 := dynamodb.New(sess)
+
+	av, err := dynamodbattribute.MarshalMap(item)
+	if err != nil {
+		Logger.Print(err)
+	}
+
+	tableName := os.Getenv("dynamotablename")
+
+	input := &dynamodb.PutItemInput{
+		Item:      av,
+		TableName: aws.String(tableName),
+	}
+
+	_, err = svc2.PutItem(input)
+	if err != nil {
+		Logger.Print(err)
+	}
 
 }
 
@@ -147,6 +224,11 @@ func PutUser(c *gin.Context) {
 	tmp_user := pojo.GetUsers_db(c.Param("id"))
 	if !hasAuth {
 		Logger.Print("Put Request, Authenticate Fail, Endpoint: " + ep + ":3000/v1/account/" + tmp_user.ID)
+		return
+	}
+	if tmp_user.VerifyType == "0" {
+		c.Status(401)
+		Logger.Print("Put Request, Authenticate Fail->unverified, Endpoint: " + ep + ":3000/v1/account/" + user.ID)
 		return
 	}
 
@@ -196,6 +278,7 @@ func HandleBA(c *gin.Context) {
 	}
 	tmpHash := pojo.GetUsers_db_Pass(c.Param("id"))
 	if username_ba == pojo.GetUsers_db_Username(c.Param("id")) && CheckPasswordHash(password_ba, tmpHash) {
+
 		Logger.Print("Basic Auth Successful")
 		return
 	}
@@ -230,6 +313,15 @@ func HandleBA_doc(c *gin.Context) {
 	tmpHash := pojo.GetUsers_db_Pass(tmpid)
 	if username_ba == pojo.GetUsers_db_Username(tmpid) && CheckPasswordHash(password_ba, tmpHash) {
 		Logger.Print("Basic Auth Successful")
+
+		user := pojo.GetUsers_db(tmpid)
+		if user.VerifyType == "0" {
+			c.Status(401)
+			Logger.Print("Authenticate Fail->unverified,401")
+			hasAuth = false
+			return
+		}
+
 		tmpuserID = tmpid
 		return
 	}
@@ -250,4 +342,94 @@ func HashAndSalt(pass []byte) string {
 func CheckPasswordHash(password, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil
+}
+
+func VerifyEmail(c *gin.Context) {
+	tableName := os.Getenv("dynamotablename")
+	email := c.Request.URL.Query().Get("email")
+	token := c.Request.URL.Query().Get("token")
+	Logger.Print("get from url")
+	Logger.Print(email)
+	Logger.Print(token)
+
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+
+	// Create DynamoDB client
+	svc := dynamodb.New(sess)
+
+	filt := expression.Name("EMAIL_KEY").Equal(expression.Value(email))
+	proj := expression.NamesList(expression.Name("TTLATT"), expression.Name("EMAIL_KEY"), expression.Name("TOKEN"))
+
+	expr, err := expression.NewBuilder().WithFilter(filt).WithProjection(proj).Build()
+	if err != nil {
+		Logger.Print("Expression Error")
+	}
+
+	params := &dynamodb.ScanInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		FilterExpression:          expr.Filter(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(tableName),
+	}
+
+	result, err := svc.Scan(params)
+	if err != nil {
+		Logger.Print("Params Error")
+	}
+
+	for _, i := range result.Items {
+		item := Item{}
+
+		err = dynamodbattribute.UnmarshalMap(i, &item)
+
+		if err != nil {
+			Logger.Print(err)
+		}
+
+		Logger.Print("FIND ITEM")
+		Logger.Print(item.EMAIL_KEY)
+		Logger.Print(item.TOKEN)
+		Logger.Print(item.TTLATT)
+
+		tmptime := dynamodbattribute.Number(strconv.FormatInt(time.Now().Unix(), 10)).String()
+		intVar1, err1 := strconv.Atoi(tmptime)
+		if err1 != nil {
+			Logger.Print("Convert int error")
+		}
+		intVar2, err2 := strconv.Atoi(string(item.TTLATT))
+		if err2 != nil {
+			Logger.Print("Convert int error")
+		}
+		Logger.Print("This is TTL DEBUG")
+		Logger.Print(intVar1)
+		Logger.Print(intVar2)
+		Logger.Print(intVar1 - intVar2)
+
+		if intVar1-intVar2 > 300 {
+			Logger.Print("Verify Link Expired")
+			c.Status(400)
+			return
+		}
+
+		if token != item.TOKEN {
+			c.Status(400)
+			return
+		} else {
+			users := pojo.GetAllUsers_db()
+			for index, element := range users {
+				if element.Username == item.EMAIL_KEY {
+					element.VerifyType = "1"
+					pojo.UpdateUser(element.ID, element)
+					return
+				}
+				index += 1
+			}
+
+		}
+
+	}
+	c.Status(400)
 }

@@ -24,6 +24,7 @@ func GetAlldocs(c *gin.Context) {
 		Logger.Print("Get Request, Authenticate Fail, Endpoint: " + ep + ":3000/v1/documents")
 		return
 	}
+
 	c.JSON(200, Getall_id_docs(tmpuserID))
 
 	Logger.Print("Get Request, Get All Docs From User ID: " + tmpuserID + ", 200 OK, Endpoint: " + ep + ":3000/v1/documents")
