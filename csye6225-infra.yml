@@ -76,7 +76,7 @@ Parameters:
     Default: prod.louisdomain6225.me
   sendgridkey:
     Type: String
-    Default: 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 
+    Default: sendgridkey 
   dynamodbtable:
     Type: String
     Default: dynamodbtable    
