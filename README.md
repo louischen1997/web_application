@@ -142,6 +142,27 @@
 4. create counter metrics whenever api calls with statsd library golang support
 5. copy cloudwatch-config into EC2 instance
 6. run config scripts in user data 
+
+
++ ## Set Cloud Formation
+1. SNS topic
+2. lambda function with go(via S3 bucket)
+3. lambda role with permission policy
+4. dynamodb, Attribute: EMAIL_KEY,TOKEN,TTL: TTLATT
+
++ ## Lambda Function Set Up
+1. lambda handler with golang
+2. new package using golang 
+3. triggered by SNS topic(with permissions)
+4. sending EMAIL to verify user account
+5. including email address, token, domain, sendgridkey
+
++ ## WebApp api
+1. verify link: get request getting items form dynamodb to confirm token validation
+2. the token expired after 300 seconds
+3. set user account new variable: account verify
+4. block all auth apis if not verified
+5. create approproate logs in cloudwatch
  
 
 
