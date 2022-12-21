@@ -27,12 +27,13 @@ func Sendemails(mess string) {
 	res2 := res[1]
 	res3 := res[2]
 	res4 := res[3]
-	emailaddress := "http://" + res4 + ":3000/v1/verifyUserEmail?email=" + res1 + "&token=" + res2
-	from := mail.NewEmail("Web Application CSYE", "csye6225@em6674.prod.louisdomain6225.me")
+	res5 := res[4]
+	emailaddress := "https://" + res4 + "/" + res5 + "/verifyUserEmail?email=" + res1 + "&token=" + res2
+	from := mail.NewEmail("Web Application CSYE", "csye6225_web@em1503.prod.louisdomain6225.me")
 	subject := "Verify User Account"
 	to := mail.NewEmail("New User", res1)
 	plainTextContent := "Verify User Account"
-	htmlContent := "<strong>Please click the following link to verify your account<br /><br /><div>" + emailaddress + "</div></strong>"
+	htmlContent := "<strong>Please click the following link to verify your account.<br /><br /><div>" + emailaddress + "</div></strong>"
 	message := mail.NewSingleEmail(from, subject, to, plainTextContent, htmlContent)
 	client := sendgrid.NewSendClient(res3)
 	response, err := client.Send(message)
