@@ -73,10 +73,13 @@ Parameters:
     Default: Z007227514AEIDXKO3F49
   setrecordDomainName:
     Type: String
-    Default: prod.louisdomain6225.me
+    Default: prod.louisdomain6225.me.
+  setDomainName:
+    Type: String
+    Default: prod.louisdomain6225.me  
   sendgridkey:
     Type: String
-    Default: yoursendgridkey
+    Default: sendgrid_api_key 
   dynamodbtable:
     Type: String
     Default: dynamodbtable    
@@ -92,6 +95,36 @@ Parameters:
   lambdabucket:
     Type: String
     Default: testbuck-csye-kaiwenchen
+  lambdaPO:
+    Type: String
+    Default: arn:aws:lambda:us-west-2:928544880062:function:lmb-002146255-kaiwen-csye6225
+  certificatearnid:
+    Type: String
+    Default: arn:aws:acm:us-west-2:928544880062:certificate/d45a65d5-a8bc-4121-a34f-ad469b12b4cc
+  princArn:
+    Type: String
+    Default: arn:aws:iam::928544880062:root
+  keyinstance:
+    Type: String
+    Default: arn:aws:iam::928544880062:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling
+  keyrdb:
+    Type: String
+    Default: arn:aws:iam::928544880062:role/aws-service-role/rds.amazonaws.com/AWSServiceRoleForRDS    
+  cpupercenup:
+    Type: Number
+    Default: 1.2
+  cpupercendwon:
+    Type: Number
+    Default: 1.0  
+  lmabdafuncname:
+    Type: String
+    Default: lmb-002146255-kaiwen-csye6225
+
+
+    
+
+
+     
 
 
 
@@ -283,7 +316,27 @@ Resources:
       SubnetId:
         Ref: privateSubnet3
       RouteTableId:
-        Ref: myPrivateRouteTable                                                
+        Ref: myPrivateRouteTable      
+
+  loadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: load balancer
+      VpcId: 
+        Ref: myVPC
+      Tags:
+        - Key: Name
+          Value: "load balancer"  
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0             
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
   MySecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -295,26 +348,18 @@ Resources:
         Value: "application"  
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0   
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
+          SourceSecurityGroupId: !Ref loadBalancerSecurityGroup  
         - IpProtocol: tcp
           FromPort: 3000
           ToPort: 3000
-          CidrIp: 0.0.0.0/0
+          SourceSecurityGroupId: !Ref loadBalancerSecurityGroup
 
   privateInstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow http to client host
+      GroupDescription: rds
       VpcId: 
         Ref: myVPC
       Tags:
@@ -324,7 +369,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
-          SourceSecurityGroupId: !Ref MySecurityGroup    
+          SourceSecurityGroupId: !Ref MySecurityGroup   
 
   
   
@@ -357,6 +402,8 @@ Resources:
         Ref: myDBSubnetGroup
       PubliclyAccessible: 'false' 
       DBName: !Ref Username 
+      StorageEncrypted: 'true'
+      KmsKeyId: !Ref myKMSKeyRDS
       VPCSecurityGroups:
         - !Ref privateInstanceSecurityGroup    
 
@@ -400,7 +447,28 @@ Resources:
         - !Ref lambdaPolicySNS
       Tags:
         - Key: Name
-          Value: "Lambda_Role"          
+          Value: "Lambda_Role"    
+
+  mylambdaPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "s3:PutObject"
+              - "iam:ListRoles"
+              - "lambda:UpdateFunctionCode"
+              - "lambda:CreateFunction"
+              - "lambda:UpdateFunctionConfiguration"
+            Resource:
+              - !Ref lambdaPO
+      PolicyName: lambdapolicyname
+      Roles:
+        - !Ref mylambdaRole
+        
+                        
   myPolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -417,6 +485,8 @@ Resources:
       PolicyName: WebAppS3
       Roles:
         - !Ref myRole
+
+
   myInstanceProfile:
     Type: "AWS::IAM::InstanceProfile"
     Properties:
@@ -424,66 +494,22 @@ Resources:
       Roles:
         - !Ref myRole
 
-  MyEC2Instance: 
-    Type: AWS::EC2::Instance
-    Properties: 
-      Tags:
-      - Key: Name
-        Value: !Ref AWS::StackName    
-      ImageId: !Ref ImageIdd
-      KeyName: !Ref Keynamestr
-      InstanceType: "t2.micro"
-      DisableApiTermination: 'false'
-      IamInstanceProfile: !Ref myInstanceProfile
-      UserData: 
-        Fn::Base64:
-          !Sub |
-            #!/bin/bash
-            cd /home/ubuntu
-            echo ur=${Username} >> .env
-            echo ps=${Userpass} >> .env
-            echo hs=${RDSDBInstance.Endpoint.Address} >> .env
-            echo dbn=${Username} >> .env
-            echo bkn=${MyBucket} >> .env
-            echo AWS_REGION=${DBRegion} >> .env
-            echo endpoint=${setrecordDomainName} >> .env
-            echo sendgrid=${sendgridkey} >> .env
-            echo dynamotablename=${dynamodbtable} >> .env
-            echo snstopic=${MySNSTopic} >> .env
-            sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-            -a fetch-config \
-            -m ec2 \
-            -c file:/opt/cloudwatch-config.json \
-            -s
-
-          
-      SubnetId : 
-        Ref: mySubnet1
-      SecurityGroupIds: 
-        - !Ref MySecurityGroup
-      BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            VolumeSize: "50"
-            VolumeType: "gp2"
-            DeleteOnTermination: 'true'    
-  myPrivateRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId:
-        Ref: myPrivateRouteTable
-      DestinationCidrBlock: 10.0.160.0/20
-      InstanceId: !Ref MyEC2Instance            
+ 
+        
+      
   DnsRecord:
-    Type: AWS::Route53::RecordSet
+    Type: AWS::Route53::RecordSetGroup
     Properties:
-      Comment: DNS name for my instance.
+      Comment: Creating records 
       HostedZoneId: !Ref setrecordDomainID
-      Name: !Ref setrecordDomainName
-      Type: A
-      TTL: '900'
-      ResourceRecords:
-      - !GetAtt MyEC2Instance.PublicIp         
+      RecordSets:
+      - AliasTarget:
+          DNSName: !GetAtt loadBalancer.DNSName
+          HostedZoneId: !GetAtt loadBalancer.CanonicalHostedZoneID
+        Name: !Ref setrecordDomainName
+        Type: A
+         
+        
   DynamoDB:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -507,11 +533,10 @@ Resources:
         WriteCapacityUnits: 1
 
 
-
-  
   lambdago:
     Type: AWS::Lambda::Function
     Properties:
+      FunctionName: !Ref lmabdafuncname
       Runtime: go1.x
       Role: !GetAtt mylambdaRole.Arn
       Handler: main
@@ -538,17 +563,246 @@ Resources:
       SourceArn:  !Ref MySNSTopic 
       FunctionName: !GetAtt lambdago.Arn
 
-      
-                   
 
-  
- 
-  
-  
-    
-  
-      
-                     
+
+  asgLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: asg_launch_config
+      LaunchTemplateData:  
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: 20
+              VolumeType: "gp3"
+              DeleteOnTermination: true
+              KmsKeyId: !Ref myKMSKey
+              Encrypted: 'true'
+        ImageId: !Ref ImageIdd
+        InstanceType: t3.micro
+        KeyName: !Ref Keynamestr
+        IamInstanceProfile: 
+          Arn: !GetAtt myInstanceProfile.Arn
+        NetworkInterfaces:
+          - DeviceIndex: 0 
+            AssociatePublicIpAddress: 'true'
+            Groups:
+             - !GetAtt MySecurityGroup.GroupId
+            SubnetId:
+              Ref: mySubnet1
+        UserData: 
+          Fn::Base64:
+            !Sub |
+              #!/bin/bash
+              cd /home/ubuntu
+              echo ur=${Username} >> .env
+              echo ps=${Userpass} >> .env
+              echo hs=${RDSDBInstance.Endpoint.Address} >> .env
+              echo dbn=${Username} >> .env
+              echo bkn=${MyBucket} >> .env
+              echo AWS_REGION=${DBRegion} >> .env
+              echo endpoint=${setDomainName} >> .env
+              echo sendgrid=${sendgridkey} >> .env
+              echo dynamotablename=${dynamodbtable} >> .env
+              echo snstopic=${MySNSTopic} >> .env
+              sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+              -a fetch-config \
+              -m ec2 \
+              -c file:/opt/cloudwatch-config.json \
+              -s
+        
+        
+
+  asgWebApp:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: asg_launch_config
+      AvailabilityZones:
+        - !Ref Subnet1ZN
+        - !Ref Subnet2ZN
+        - !Ref Subnet3ZN
+      Cooldown: '60'
+      DesiredCapacity: '1'
+      HealthCheckGracePeriod: 90
+      HealthCheckType: EC2
+      LaunchTemplate:
+        LaunchTemplateId: !Ref asgLaunchTemplate
+        Version: !GetAtt asgLaunchTemplate.LatestVersionNumber
+      MaxSize: '3'
+      MinSize: '1'
+      NewInstancesProtectedFromScaleIn: 'false'
+      Tags:
+        - Key: Application
+          Value: WebApp
+          PropagateAtLaunch: "true"
+        - Key: Name
+          Value: asg_launch_config
+          PropagateAtLaunch: "true"
+      TargetGroupARNs:
+        - !Ref loadBalancerTargetGroup    
+      VPCZoneIdentifier:
+        - Ref: mySubnet1
+        - Ref: mySubnet2
+        - Ref: mySubnet3
+
+  asgCPUPolicyup:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref asgWebApp
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: 1
+
+  asgCPUPolicydown:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref asgWebApp
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: -1      
+
+     
+
+  cpualarmup:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: alarm up
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 10
+      EvaluationPeriods: 1
+      AlarmActions:
+        - !Ref asgCPUPolicyup
+      Threshold: !Ref cpupercenup
+      Dimensions: 
+        - Name: AutoScalingGroupName
+          Value: !Ref asgWebApp 
+      ComparisonOperator: GreaterThanThreshold 
+
+  cpualarmdown:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: alarm low
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 10
+      EvaluationPeriods: 1
+      AlarmActions:
+        - !Ref asgCPUPolicydown
+      Threshold: !Ref cpupercendwon
+      Dimensions: 
+        - Name: AutoScalingGroupName
+          Value: !Ref asgWebApp
+      ComparisonOperator: LessThanThreshold       
+
+
+
+  loadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '60'
+      Name: !Sub ${AWS::StackName}-load-balancer
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref loadBalancerSecurityGroup
+      Subnets:
+        - Ref: mySubnet1
+        - Ref: mySubnet2
+        - Ref: mySubnet3
+      Tags:
+        - Key: Application
+          Value: WebApp
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-load-balancer
+      Type: application
+
+  loadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 90
+      HealthCheckPath: '/healthz'
+      HealthCheckPort: '3000'
+      HealthCheckProtocol: 'HTTP'
+      HealthCheckTimeoutSeconds: 60
+      HealthyThresholdCount: 2
+      IpAddressType: ipv4
+      Name: !Sub ${AWS::StackName}-lb-tg
+      Port: 3000
+      Protocol: 'HTTP'
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-lb-tg
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '20'
+      TargetType: instance
+      UnhealthyThresholdCount: 2
+      VpcId:
+        Ref: myVPC 
+
+  loadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref loadBalancerTargetGroup
+      LoadBalancerArn: !Ref loadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref certificatearnid
+
+
+  myKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: An example symmetric encryption KMS key
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: key-default-1
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Ref princArn
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: "Add service role"
+            Effect: Allow
+            Principal:
+              AWS: !Ref keyinstance
+            Action:
+              - "kms:*"
+            Resource: "*"
+
+  myKMSKeyRDS:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: An example symmetric encryption KMS key
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: key-default-2
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Ref princArn
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: "Add service role"
+            Effect: Allow
+            Principal:
+              AWS: !Ref keyrdb
+            Action:
+              - "kms:*"
+            Resource: "*"  
+                      
+          
+          
+           
        
 
 Outputs:
