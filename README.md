@@ -31,7 +31,7 @@
 5. test all apis on Postman
 
 + ## Github actions
-1. PR check on go.yml
+1. PR on go.yml
 2. set branch protection on this action workflow
  
 + ## Create group and users
